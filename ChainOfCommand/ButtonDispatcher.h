@@ -23,6 +23,7 @@
 // SOFTWARE.
 
 #include <vector>
+#include <memory>
 #include <ButtonEvent.h>
 #include <ButtonHandler.h>
 
@@ -31,21 +32,31 @@
 class EventDispatcher // : public ButtonHandler
 {
 private:
-	std::vector<ButtonHandler *> handlers;
+	using Handler = ButtonHandler;
+	using WeakPointer = std::weak_ptr<ButtonHandler>;
+	using SharedPointer = std::shared_ptr<ButtonHandler>;
+
+private:
+	std::vector<std::weak_ptr<ButtonHandler>> handlers;
 	
 public:
-	// Cannot pass nullptr
-	void registerHandler(const ButtonHandler & eventHandler)
+	// Ignores nullptr
+	void registerHandler(std::shared_ptr<ButtonHandler> handler)
 	{
-		this->handlers.push_back(&eventHandler);
+		if(handler != nullptr)
+			this->handlers.emplace_back(handler);
 	}
 	
 	// Goes through every handler and keeps trying until one handles the event
 	bool handleButtonsPressed(ButtonEvent & event) override
 	{
 		for(auto & handler : this->handlers)
-			if(handler.handleButtonsPressed(event))
-				return true;
+			if(!handler.expired())
+			{
+				auto activeHandler = handler.lock();
+				if(handler->handleButtonsPressed(event))
+					return true;
+			}
 
 		return false;
 	}
@@ -53,9 +64,51 @@ public:
 	bool handleButtonsReleased(ButtonEvent & event) override
 	{
 		for(auto & handler : this->handlers)
-			if(handler.handleButtonsReleased(event))
-				return true;
+			if(!handler.expired())
+			{
+				auto activeHandler = handler.lock();
+				if(handler->handleButtonsReleased(event))
+					return true;
+			}
 
 		return false;
+	}
+	
+	void eraseExpiredHandlers(void)
+	{
+		auto iterator = std::remove_if(std::begin(this->handlers), std::end(this->handlers),
+			[] (const std::weak_ptr<ButtonHandler> & handler) { return handler.expired(); }
+		);
+		this->handlers.erase(iterator, std::end(this->handlers));
+	}
+	
+	bool deregisterHandler(std::shared_ptr<ButtonHandler> handler)
+	{
+		auto iterator = std::find_if(std::begin(this->handlers), std::end(this->handlers),
+			[&handler] (const std::weak_ptr<ButtonHandler> & innerHandler)
+			{
+				if(innerHandler.expired())
+					return false;
+					
+				auto pointer = innerHandler.lock();
+				return (handler == pointer);
+			}
+		);
+		this->handlers.erase(iterator, std::end(this->handlers));
+	}
+	
+	bool deregisterAllHandlers(std::shared_ptr<ButtonHandler> handler)
+	{
+		auto iterator = std::remove_if(std::begin(this->handlers), std::end(this->handlers),
+			[&handler] (const std::weak_ptr<ButtonHandler> & innerHandler)
+			{
+				if(innerHandler.expired())
+					return false;
+					
+				auto pointer = innerHandler.lock();
+				return (handler == pointer);
+			}
+		);
+		this->handlers.erase(iterator, std::end(this->handlers));
 	}
 };
