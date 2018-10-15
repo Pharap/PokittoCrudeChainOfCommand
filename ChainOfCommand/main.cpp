@@ -42,8 +42,9 @@ public:
 	}
 };
 
-SoundControlHandler soundHandler;
-DummyControlHandler dummyHandler;
+std::shared_ptr<ButtonHandler> soundHandler = std::make_shared<SoundControlHandler>();
+std::shared_ptr<ButtonHandler> dummyHandler = std::make_shared<DummyControlHandler>();
+
 ButtonDispatcher dispatcher;
 
 int main(void)
